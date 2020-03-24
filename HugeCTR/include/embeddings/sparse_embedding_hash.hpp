@@ -561,6 +561,7 @@ long long SparseEmbeddingHash<TypeHashKey>::get_params_num() {
 
 template <typename TypeHashKey>
 void SparseEmbeddingHash<TypeHashKey>::forward() {
+  //SSY where one step lookup 
   // Read data from input_buffers_ -> look up -> write to output_tensors
 
   // get previous device ID
@@ -619,7 +620,6 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
     CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));
     CK_CUDA_THROW_(cudaStreamSynchronize(*Base::device_resources_[id]->get_stream_ptr()));
   }
-
   // scale for combiner=mean after reduction
   if (embedding_params_.combiner == 1) {
     int send_count = embedding_params_.batch_size * embedding_params_.slot_num + 1;
@@ -655,12 +655,12 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
                                      send_count * sizeof(TypeHashKey), cudaMemcpyDeviceToDevice,
                                      *Base::device_resources_[0]->get_stream_ptr()));
     }
-
     // sync
     for (int id = 0; id < local_gpu_count; id++) {
       CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));
       CK_CUDA_THROW_(cudaStreamSynchronize(*Base::device_resources_[id]->get_stream_ptr()));
     }
+
 
     // do average
     for (int id = 0; id < local_gpu_count; id++) {
@@ -675,7 +675,6 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
                                                    embedding_params_.embedding_vec_size, row_offset,
                                                    output_tensor->get_ptr());
     }
-
     // sync
     for (int id = 0; id < local_gpu_count; id++) {
       CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));
@@ -771,6 +770,7 @@ void SparseEmbeddingHash<TypeHashKey>::update_params_per_thread(int tid) {
   opt_params_[tid]->hyperparams.adam.times++;
 
   // do update params operation
+  //SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
   SparseEmbeddingHashKernels::do_update_params(
       *Base::device_resources_[tid]->get_stream_ptr(), embedding_params_.batch_size,
       embedding_params_.slot_num, embedding_params_.embedding_vec_size, max_vocabulary_size_per_gpu,

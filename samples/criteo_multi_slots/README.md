@@ -15,6 +15,9 @@ $ cd ../../tools/criteo_script/ && bash usage.sh && cd ../../samples/criteo_mult
 2. Translate the dataset to HugeCTR format
 ```shell
 $ g++ -DNDEBUG -o criteo2hugectr10slots -std=c++11 criteo2hugectr10slots.cpp  
+# arg1 is the input filename
+# arg2 is the prefix to create emb file 
+# arg3 is the filelist to be generated
 $ ./criteo2hugectr10slots ../../tools/criteo_script/train.out criteo/sparse_embedding file_list.txt
 $ ./criteo2hugectr10slots ../../tools/criteo_script/test.out criteo_test/sparse_embedding file_list_test.txt
 ```

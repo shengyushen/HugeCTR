@@ -36,6 +36,8 @@ class Session {
  private:
   typedef long long TypeKey;               /**< type of input key in dataset. */
   std::vector<Network*> networks_;         /**< networks (dense) used in training. */
+    // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
+    // HugeCTR/include/embeddings/sparse_embedding_hash.hpp
   Embedding<TypeKey>* embedding_{nullptr}; /**< embedding */
   DataReader<TypeKey>* data_reader_; /**< data reader to reading data from data set to embedding. */
   DataReader<TypeKey>* data_reader_eval_; /**< data reader for evaluation. */

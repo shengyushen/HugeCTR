@@ -492,6 +492,8 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
               slot_num,
               combiner,  // combiner: 0-sum, 1-mean, 2-sqrtn
               opt_params};
+          //SSY where SparseEmbeddingHash is created
+          //SSY HugeCTR/src/embedding_creator.cu
           *embedding = EmbeddingCreator::create_sparse_embedding_hash(
               (*data_reader)->get_row_offsets_tensors(), (*data_reader)->get_value_tensors(),
               embedding_params, gpu_resource_group);

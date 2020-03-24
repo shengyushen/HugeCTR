@@ -62,6 +62,10 @@ Session::Session(int batch_size, const std::string& json_name, const DeviceMap& 
     }
     parser_ = new Parser(json_name, batch_size);
     DataReader<TypeKey>* data_reader_array[2];
+    //SSY the reference of embedding_ is passed into pipeline creator to create SparseEmbeddingHash
+    // HugeCTR/src/parser.cpp
+    // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
+    // HugeCTR/include/embeddings/sparse_embedding_hash.hpp
     parser_->create_pipeline(data_reader_array, &embedding_, &networks_, gpu_resource_group_);
     data_reader_ = data_reader_array[0];
     data_reader_eval_ = data_reader_array[1];
@@ -140,9 +144,14 @@ void network_train_helper(int id, Network* n) {
 }
 
 Error_t Session::train() {
+    //std::cout << "Session::train"<<std::endl;
   try {
     data_reader_->read_a_batch_to_device();
+    // SSY where lookup embedding_ happen
+    // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
+    // SSY HugeCTR/include/embeddings/sparse_embedding_hash.hpp + 563
     embedding_->forward();
+    
 
     if (networks_.size() > 1) {
       // execute dense forward and backward with multi-cpu threads
@@ -171,6 +180,9 @@ Error_t Session::train() {
     }
 
     embedding_->backward();
+    //SSY above backward is used to compute gradient
+    //SSY following is used to scatter gradient back to emb table
+    //SSY HugeCTR/include/embeddings/sparse_embedding_hash.hpp
     embedding_->update_params();
   } catch (const internal_runtime_error& rt_err) {
     std::cerr << rt_err.what() << std::endl;

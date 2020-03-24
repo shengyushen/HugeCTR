@@ -94,6 +94,8 @@ int main(int argc, char* argv[]) {
         HugeCTR::SolverParser solver_config(config_file);
         HugeCTR::Session session_instance(solver_config.batchsize, config_file,
                                           *solver_config.device_map);
+        // SSY : generate the model from json
+        // HugeCTR/src/session.cpp
         session_instance.init_params(solver_config.model_file);
         break;
       }
@@ -109,6 +111,7 @@ int main(int argc, char* argv[]) {
           std::cout << "Config file: " << config_file << std::endl;
         }
         HugeCTR::SolverParser solver_config(config_file);
+	// SSY HugeCTR/include/session.hpp
         HugeCTR::Session session_instance(solver_config.batchsize, solver_config.model_file,
                                           solver_config.embedding_file, config_file,
                                           *solver_config.device_map);
@@ -120,6 +123,9 @@ int main(int argc, char* argv[]) {
           std::cout << "HugeCTR training start:" << std::endl;
         }
         for (int i = 0; i < solver_config.max_iter; i++) {
+          //if (i%100==0) 
+	  //        std::cout << "main iteration " << i << std::endl;
+          // SSY HugeCTR/src/session.cpp
           session_instance.train();
           if (i % solver_config.display == 0 && i != 0) {
             timer.stop();

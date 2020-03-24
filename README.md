@@ -1,3 +1,16 @@
+nvidia-docker run -it --ipc=host -v /root/ssy:/root/ssy --name ssyHugerctr nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+nvidia-docker start ssyHugerctr
+nvidia-docker exec -it ssyHugerctr /bin/bash
+
+#in docker
+apt update -o Acquire::https::developer.download.nvidia.com::Verify-Peer=false
+
+apt install -y vim cmake
+
+# make
+cmake  -DCMAKE_BUILD_TYPE=Release -DSM=70
+
+
 # HugeCTR #
 HugeCTR is a high-efficiency GPU framework designed for Click-Through-Rate (CTR) estimation training.
 
