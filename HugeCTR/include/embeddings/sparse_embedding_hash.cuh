@@ -178,6 +178,8 @@ __global__ void value_count_kernel(const int nnz, const TypeHashValueIndex *hash
     // cal how many elements in this group
     if (sample_num) {
       while (gid + sample_num < nnz) {
+      // SSY I find the sample_num reach 128k or so
+      //while (gid + sample_num < nnz && sample_num < 131072 ) {
         TypeHashValueIndex latter_value = hash_value_index_sort[gid + sample_num];
         if (cur_value == latter_value) {
           sample_num++;
@@ -190,7 +192,12 @@ __global__ void value_count_kernel(const int nnz, const TypeHashValueIndex *hash
       // corresponding offset in the hash_value_index_count_offset array This is a parallel writing,
       // so the hash_value_index_count array will be out-of-order(not sorted like the original
       // hash_value_index_sort array).
+      // SSY the only place to increase 1, but not used in getting offset
       uint32_t counter = atomicAdd(hash_value_index_count_counter, 1);
+      // SSY I use following to run, and find that value_count_kernel is still 4ms orso long
+      // so atomic is not the bottleneck
+      //uint32_t counter = (*hash_value_index_count_counter) + 1;
+      //(*hash_value_index_count_counter)=(*hash_value_index_count_counter)+1;
       hash_value_index_count[counter] = sample_num;
       hash_value_index_count_offset[counter] = gid;
     }
@@ -473,6 +480,7 @@ void do_update_params(
     // step4: count the number for each unduplicated hash_value_index
     CK_CUDA_THROW_(cudaMemsetAsync(hash_value_index_count_counter, 0, sizeof(uint32_t), stream));
     gridSize.x = (nnz + (blockSize.x - 1)) / blockSize.x;
+    // SSY 24% run time
     value_count_kernel<<<gridSize, blockSize, 0, stream>>>(
         nnz, hash_value_index_sort, hash_value_index_count, hash_value_index_count_offset,
         hash_value_index_count_counter);
@@ -493,7 +501,7 @@ void do_update_params(
             opt_params.lr *
             sqrt(1 - pow(opt_params.hyperparams.adam.beta2, opt_params.hyperparams.adam.times)) /
             (1 - pow(opt_params.hyperparams.adam.beta1, opt_params.hyperparams.adam.times));
-
+	// SSY 22% run time
         opt_adam_kernel<<<gridSize, blockSize, 0, stream>>>(
             hash_hash_value_index_count_num, embedding_vec_size, opt_params.hyperparams.adam,
             sample_id_sort, hash_value_index_sort, hash_value_index_count,

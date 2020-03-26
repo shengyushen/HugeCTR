@@ -10,6 +10,11 @@ apt install -y vim cmake
 # make
 cmake  -DCMAKE_BUILD_TYPE=Release -DSM=70
 
+cd samples/criteo_multi_slots/
+./run.sh
+
+
+
 
 # HugeCTR #
 HugeCTR is a high-efficiency GPU framework designed for Click-Through-Rate (CTR) estimation training.
