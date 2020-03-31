@@ -177,16 +177,39 @@ __global__ void value_count_kernel(const int nnz, const TypeHashValueIndex *hash
     // if sample_num > 0, continue to compare the current hash_value_index_sort with latter values,
     // cal how many elements in this group
     if (sample_num) {
+      //SSY exp 2 forward search
+      auto sample_num_old = sample_num;
       while (gid + sample_num < nnz) {
-      // SSY I find the sample_num reach 128k or so
-      //while (gid + sample_num < nnz && sample_num < 131072 ) {
         TypeHashValueIndex latter_value = hash_value_index_sort[gid + sample_num];
         if (cur_value == latter_value) {
-          sample_num++;
+          sample_num = sample_num*2;
         } else {
           break;
         }
       }
+      if(gid+sample_num>=nnz) {
+         sample_num = nnz-gid-1;
+      }
+      while(sample_num_old<sample_num) {
+        auto center = (sample_num+sample_num_old)/2;
+        TypeHashValueIndex latter_value = hash_value_index_sort[gid + center];
+        if(center == sample_num_old) 
+            break;
+        if (cur_value == latter_value) {
+           sample_num_old = center;
+        } else {
+           sample_num = center;
+        }
+      }
+      //SSY the old linear search
+//      while (gid + sample_num < nnz) {
+//        TypeHashValueIndex latter_value = hash_value_index_sort[gid + sample_num];
+//        if (cur_value == latter_value) {
+//          sample_num++;
+//        } else {
+//          break;
+//        }
+//      }
 
       // record sample_num in the hash_value_index_count array(with all non-zero values) and the
       // corresponding offset in the hash_value_index_count_offset array This is a parallel writing,
