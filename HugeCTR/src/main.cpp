@@ -41,6 +41,7 @@ enum class CmdOptions_t { Train, ModelInit, Version, Help };
 int main(int argc, char* argv[]) {
   try {
     int numprocs = 1, pid = 0;
+		//SSY can only use 1 GPU
     cudaSetDevice(0);
 #ifdef ENABLE_MPI
     int provided;
@@ -82,6 +83,7 @@ int main(int argc, char* argv[]) {
         break;
       }
       case CmdOptions_t::ModelInit: {
+				// SSY where model init happen
         if (argc != 3 && pid == 0) {
           std::cerr << "expect config file." << std::endl;
           std::cerr << simple_help;

@@ -119,6 +119,7 @@ Error_t Session::init_params(std::string model_file) {
     }
     // network init
     for (auto network : networks_) {
+			// SSY HugeCTR/src/layer.cpp 
       network->init_params(out_stream);
     }
     out_stream.close();

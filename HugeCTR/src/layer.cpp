@@ -26,6 +26,7 @@
 namespace HugeCTR {
 
 void Layer::init_params(std::ofstream& out_stream) {
+	//SSY HugeCTR/include/layer.hpp  return empty vector
   std::vector<float> initializer = std::move(get_initializer());
   if (initializer.empty()) return;
 
