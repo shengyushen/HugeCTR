@@ -67,6 +67,7 @@ Session::Session(int batch_size, const std::string& json_name, const DeviceMap& 
     // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
     // HugeCTR/include/embeddings/sparse_embedding_hash.hpp
     parser_->create_pipeline(data_reader_array, &embedding_, &networks_, gpu_resource_group_);
+		// SSY the two data_reader_array are used as 
     data_reader_ = data_reader_array[0];
     data_reader_eval_ = data_reader_array[1];
   } catch (const internal_runtime_error& rt_err) {
@@ -147,6 +148,8 @@ void network_train_helper(int id, Network* n) {
 Error_t Session::train() {
     //std::cout << "Session::train"<<std::endl;
   try {
+		//SSY HugeCTR/include/data_collector.hpp
+		// see above in constructor Session
     data_reader_->read_a_batch_to_device();
     // SSY where lookup embedding_ happen
     // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh

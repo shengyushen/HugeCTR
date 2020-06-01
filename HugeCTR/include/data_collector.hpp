@@ -280,12 +280,19 @@ void DataCollector<TypeKey>::read_a_batch_to_device() {
   }
   for (unsigned int i = 0; i < device_resources_.size(); i++) {
     int o_device = -1;
+		//SSY stupid, just get current device and then set new device
     CK_CUDA_THROW_(get_set_device(device_resources_[i]->get_device_id(), &o_device));
-
+		//SSY input data buffer
+		// dst
+		// src
+		// size
+		// device to device
+		// stream
     CK_CUDA_THROW_(cudaMemcpyAsync(csr_buffers_[i]->get_ptr_with_offset(0),
                                    csr_buffers_internal_[i]->get_ptr_with_offset(0),
                                    csr_buffers_[i]->get_size(), cudaMemcpyDeviceToDevice,
                                    *device_resources_[i]->get_stream_ptr()));
+		// SSY label 
     CK_CUDA_THROW_(cudaMemcpyAsync(label_buffers_[i]->get_ptr_with_offset(0),
                                    label_buffers_internal_[i]->get_ptr_with_offset(0),
                                    label_buffers_[i]->get_size(), cudaMemcpyDeviceToDevice,
