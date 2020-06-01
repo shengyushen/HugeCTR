@@ -10,7 +10,24 @@ apt install -y vim cmake
 # make
 cmake  -DCMAKE_BUILD_TYPE=Release -DSM=70
 
-cd samples/criteo_multi_slots/
+
+# download data
+Go to [(link)](http://labs.criteo.com/2014/02/kaggle-display-advertising-challenge-dataset/) and download kaggle-display dataset into the folder "${project_home}/tools/criteo_script/".
+
+# preprocessing the data
+cd ${project_home}/tools/pt/
+source usage.sh
+
+# translate into hugectr format
+cd ../../samples/criteo_multi_slots/
+$ g++ -DNDEBUG -o criteo2hugectr10slots -std=c++11 criteo2hugectr10slots.cpp  
+# arg1 is the input filename
+# arg2 is the prefix to create emb file 
+# arg3 is the filelist to be generated
+$ ./criteo2hugectr10slots ../../tools/criteo_script/train.out criteo/sparse_embedding file_list.txt
+$ ./criteo2hugectr10slots ../../tools/criteo_script/test.out criteo_test/sparse_embedding file_list_test.txt
+
+# real test
 ./run.sh
 
 
