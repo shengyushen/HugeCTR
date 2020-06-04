@@ -503,7 +503,7 @@ void do_update_params(
     // step4: count the number for each unduplicated hash_value_index
     CK_CUDA_THROW_(cudaMemsetAsync(hash_value_index_count_counter, 0, sizeof(uint32_t), stream));
     gridSize.x = (nnz + (blockSize.x - 1)) / blockSize.x;
-    // SSY 24% run time
+    // SSY 24% run time, may be we can fire up several GPU thread to run on one single sample ID 
     value_count_kernel<<<gridSize, blockSize, 0, stream>>>(
         nnz, hash_value_index_sort, hash_value_index_count, hash_value_index_count_offset,
         hash_value_index_count_counter);
