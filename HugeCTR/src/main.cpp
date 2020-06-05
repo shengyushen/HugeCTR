@@ -114,6 +114,7 @@ int main(int argc, char* argv[]) {
         }
         HugeCTR::SolverParser solver_config(config_file);
 	// SSY HugeCTR/include/session.hpp
+	// SSY creating the whole pipeline with data_reader, embedding and mlp
         HugeCTR::Session session_instance(solver_config.batchsize, solver_config.model_file,
                                           solver_config.embedding_file, config_file,
                                           *solver_config.device_map);

@@ -33,6 +33,7 @@ class Tensor {
  private:
   std::vector<int>
       dims_; /**< Dimensions of tensor, and the last element is the leading dimension */
+	//SSY GenenralBuffers have built in device
   GeneralBuffer<T>& buff_; /**< GeneralBuffer used in this tensor (the real memory allocator) */
   const TensorFormat_t format_; /**< Format of the tensor */
   const size_t mem_offset_;     /**< An internal used offset to generate pointer of GPU memory */
@@ -46,9 +47,9 @@ class Tensor {
   Tensor(const std::vector<int>& dims, GeneralBuffer<T>& buffer,
          TensorFormat_t format = TensorFormat_t::WH)
       : dims_(dims),
-        buff_(buffer),
+        buff_(buffer), //SSY the GeneralBuffer from outside?
         format_(format),
-        mem_offset_(buffer.reserve(get_size_from_dims(dims))) {
+        mem_offset_(buffer.reserve(get_size_from_dims(dims))) { // SSY add new buffer space according to this tensor shape!!!
     static_assert(std::is_same<T, float>::value || std::is_same<T, long long>::value ||
                       std::is_same<T, unsigned int>::value,
                   "type not support");

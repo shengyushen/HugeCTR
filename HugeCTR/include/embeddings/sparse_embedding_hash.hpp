@@ -43,7 +43,12 @@ namespace HugeCTR {
  * GPUs(which named upload_params_to_device()), and for downloading hash tables from GPUs to
  * a host file(which named download_params_to_host()).
  */
-template <typename TypeHashKey>
+// SSY very important
+// there are two maps from key -> value_index -> value
+// the later two are hash_value_index_tensors_ and hash_table_value_tensors_ below
+// TypeHashKey is inherented from HugeCTR/src/session.cpp DataReader<TypeKey>
+// while TypeKey is defined in HugeCTR/include/session.hpp
+template <typename TypeHashKey>// SSY HugeCTR/include/embedding.hpp
 class SparseEmbeddingHash : public Embedding<TypeHashKey> {
   using Base = Embedding<TypeHashKey>;
 
@@ -56,13 +61,13 @@ class SparseEmbeddingHash : public Embedding<TypeHashKey> {
   std::vector<OptParams *> opt_params_; /**< Optimizer params. */
   std::vector<
       nv::HashTable<TypeHashKey, TypeHashValueIndex, std::numeric_limits<TypeHashKey>::max()> *>
-      hash_tables_; /**< Hash table.  */
+      hash_tables_; /**< Hash table.  */ // SSY list pf mappings from step 1 to 2
 
   // define tensors
-  std::vector<Tensor<float> *> hash_table_value_tensors_; /**< Hash table value. */
+  std::vector<Tensor<float> *> hash_table_value_tensors_; /**< Hash table value. */ //SSY step 1 value set
   std::vector<Tensor<TypeHashValueIndex> *>
       hash_value_index_tensors_; /**< Hash table value index. The index is corresponding to the line
-                                    number of the value. */
+                                    number of the value. */ // SSY step 2 value index set
   std::vector<Tensor<float> *>
       embedding_feature_tensors_; /**< Embedding feature: the output tensor of the forward(). */
   std::vector<Tensor<float> *> wgrad_tensors_; /**< wgrad: the input tensor of the backward(). */
@@ -206,10 +211,10 @@ SparseEmbeddingHash<TypeHashKey>::SparseEmbeddingHash(
     const std::vector<Tensor<TypeHashKey> *> &hash_key_tensors,
     SparseEmbeddingHashParams embedding_params, GPUResourceGroup &gpu_resource_group)
     : embedding_params_(embedding_params),
-      Base(row_offsets_tensors, hash_key_tensors, embedding_params.batch_size,
+      Base(row_offsets_tensors, hash_key_tensors, embedding_params.batch_size,// SSY hash_key_tensors used as value_tensors_ in Embedding
            embedding_params.slot_num, embedding_params.embedding_vec_size, gpu_resource_group) {
   try {
-    int gpu_count = Base::device_resources_.size();
+    int gpu_count = Base::device_resources_.size(); // SSY call parent class function or member
     int o_device = -1;
     CK_CUDA_THROW_(get_set_device(Base::device_resources_[0]->get_device_id(), &o_device));
 
@@ -222,6 +227,7 @@ SparseEmbeddingHash<TypeHashKey>::SparseEmbeddingHash(
     // TODO: Is "int" enough here?
     // int embedding_rows_per_gpu = (int)ceil((double)embedding_params_.vocabulary_size /
     // (double)gpu_count); int embedding_rows_per_gpu = (int)embedding_params_.vocabulary_size;
+	//SSY all these embedding_params_ come from json files, such as samples/criteo_multi_slots/criteo.json
     max_vocabulary_size_per_gpu =
         (int)((float)embedding_params_.vocabulary_size /
               Base::device_resources_.get_total_gpu_count() / embedding_params_.load_factor);
@@ -231,18 +237,22 @@ SparseEmbeddingHash<TypeHashKey>::SparseEmbeddingHash(
 #endif
 
     // for hash_table_value initialization
+	// SSY data ramdomization
     HugeCTR::UnifiedDataSimulator<float> fdata_sim(-1.f / embedding_params_.embedding_vec_size,
                                                    1.f / embedding_params_.embedding_vec_size);
     float *h_hash_table_value;
+	//SSY this is for host memory temp, and it will be copied to GPU below
+	// SSY but this is only value set,  key and value_index map is hash_tables_ below on each GPU
     CK_CUDA_THROW_(cudaMallocHost(
         &h_hash_table_value,
         max_vocabulary_size_per_gpu * embedding_params_.embedding_vec_size * sizeof(float)));
     for (long long i = 0;
          i < ((long long)max_vocabulary_size_per_gpu * embedding_params_.embedding_vec_size); i++) {
+	// SSY random init
       h_hash_table_value[i] = fdata_sim.get_num();
     }
 
-    for (int id = 0; id < gpu_count; id++) {
+    for (int id = 0; id < gpu_count; id++) { //SSY iterate though each GPU
       int cur_device = Base::device_resources_[id]->get_device_id();
       CK_CUDA_THROW_(get_set_device(cur_device));
 
@@ -252,28 +262,34 @@ SparseEmbeddingHash<TypeHashKey>::SparseEmbeddingHash(
                             std::numeric_limits<TypeHashKey>::max()>(max_vocabulary_size_per_gpu));
 
       // new GeneralBuffer objects
-      float_bufs_.push_back(new GeneralBuffer<float>());
+      float_bufs_.push_back(new GeneralBuffer<float>()); //SSY empty GeneralBuffer with size=0 and no device, shared by lots of following tensor list, but I will define its size and alloc space for it when defining following Tensor
       uint32_bufs_.push_back(new GeneralBuffer<uint32_t>());
       key_bufs_.push_back(new GeneralBuffer<TypeHashKey>());
       value_index_bufs_.push_back(new GeneralBuffer<TypeHashValueIndex>());
 
       // new hash table value vectors
+	//SSY the list of all buffers on each gpu
+	// but how can I know that which GPU to place this new tensor?
       hash_table_value_tensors_.push_back(
           new Tensor<float>({max_vocabulary_size_per_gpu, embedding_params_.embedding_vec_size},
-                            (*float_bufs_.back()), TensorFormat_t::HW));
+                            (*float_bufs_.back()), TensorFormat_t::HW));//SSY the lastest GeneralBuffer create above and push_back
+				// SSY I also define size and alloc space for float_bufs_ according to tensor shape
 
       // new hash table value_index that get() from HashTable
+	//SSY with batch_size, it seems the resulting tensor from maping key to value index
       hash_value_index_tensors_.push_back(new Tensor<TypeHashValueIndex>(
           {1, embedding_params_.batch_size * embedding_params_.max_feature_num},
           (*value_index_bufs_.back()), TensorFormat_t::HW));
 
       // new embedding features reduced by hash table values(results of forward)
+	//SSY result of mapping value index to value
       embedding_feature_tensors_.push_back(
           new Tensor<float>({embedding_params_.batch_size * embedding_params_.slot_num,
                              embedding_params_.embedding_vec_size},
                             (*float_bufs_.back()), TensorFormat_t::HW));
 
       // new wgrad used by backward
+	//SSY same shape as embedding_feature_tensors_
       wgrad_tensors_.push_back(
           new Tensor<float>({embedding_params_.batch_size * embedding_params_.slot_num,
                              embedding_params_.embedding_vec_size},
@@ -355,18 +371,20 @@ SparseEmbeddingHash<TypeHashKey>::SparseEmbeddingHash(
 
       // init GenenralBuffers to do real allocation
 #ifndef NDEBUG
+	//SSY these size are defined above in calling Tensor
       std::cout << " max_feature_num_:" << embedding_params_.max_feature_num;
       std::cout << " float_bufs_:" << float_bufs_.back()->get_size();
       std::cout << " uint32_bufs_:" << uint32_bufs_.back()->get_size();
       std::cout << " key_bufs_:" << key_bufs_.back()->get_size();
       std::cout << " value_index_bufs_:" << value_index_bufs_.back()->get_size() << std::endl;
 #endif
-      float_bufs_.back()->init(cur_device);
+      float_bufs_.back()->init(cur_device); // SSY set their device to current device
       uint32_bufs_.back()->init(cur_device);
       key_bufs_.back()->init(cur_device);
       value_index_bufs_.back()->init(cur_device);
 
       // do initialization
+	// SSY copy from host
       CK_CUDA_THROW_(cudaMemcpy(
           hash_table_value_tensors_[id]->get_ptr(), h_hash_table_value,
           max_vocabulary_size_per_gpu * embedding_params_.embedding_vec_size * sizeof(float),
@@ -565,16 +583,18 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
   // Read data from input_buffers_ -> look up -> write to output_tensors
 
   // get previous device ID
-  int o_device = -1;
-  CK_CUDA_THROW_(get_set_device(Base::device_resources_[0]->get_device_id(), &o_device));
+  int o_device = -1;// why set the first device?
+  CK_CUDA_THROW_(get_set_device(Base::device_resources_[0]->get_device_id(), &o_device)); //SSY this o_device will only be set back in the last step
 
   int local_gpu_count = Base::device_resources_.size();
   int total_gpu_count = Base::device_resources_.get_total_gpu_count();
   // launch kernels on GPUs: do embedding lookup on multi GPUs
   for (int id = 0; id < local_gpu_count; id++) {
-    CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));
+    CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));//SSY we iterate through each device here, then why the hell we set to device 0 above
 
     // embedding lookup and reduction(sum)
+	//SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
+	//SSY the place to access rach slot and do sum
     SparseEmbeddingHashKernels::do_forward(
         *Base::device_resources_[id]->get_stream_ptr(), embedding_params_.batch_size,
         embedding_params_.slot_num, embedding_params_.embedding_vec_size,
@@ -590,6 +610,7 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
   }
 
   // use NCCL to do Reduce-Scatter
+	//SSY scatter the data to each gpu
   int batchsize_per_gpu = (int)(embedding_params_.batch_size / total_gpu_count);
   int recv_count =
       batchsize_per_gpu * embedding_params_.slot_num * embedding_params_.embedding_vec_size;
@@ -683,7 +704,7 @@ void SparseEmbeddingHash<TypeHashKey>::forward() {
   }
 
   // set device ID back
-  CK_CUDA_THROW_(get_set_device(o_device));
+  CK_CUDA_THROW_(get_set_device(o_device)); // SSY set back the old device
 
   return;
 }  // end of forward()
@@ -736,6 +757,8 @@ void SparseEmbeddingHash<TypeHashKey>::backward() {
     CK_CUDA_THROW_(get_set_device(Base::device_resources_[id]->get_device_id()));
 
     // before backward, top diff data are already in embedding_feature_tensors_
+	//SSY already get back the data for each GPU, simply push back the grad
+	//SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
     SparseEmbeddingHashKernels::do_backward(
         *Base::device_resources_[id]->get_stream_ptr(), embedding_params_.batch_size,
         embedding_params_.slot_num, embedding_params_.embedding_vec_size,
@@ -771,7 +794,7 @@ void SparseEmbeddingHash<TypeHashKey>::update_params_per_thread(int tid) {
 
   // do update params operation
   //SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
-  SparseEmbeddingHashKernels::do_update_params(
+  SparseEmbeddingHashKernels::do_update_params(// SSY only fir current GPU
       *Base::device_resources_[tid]->get_stream_ptr(), embedding_params_.batch_size,
       embedding_params_.slot_num, embedding_params_.embedding_vec_size, max_vocabulary_size_per_gpu,
       *opt_params_[tid], Base::row_offsets_tensors_[tid]->get_ptr(),
@@ -809,7 +832,7 @@ void SparseEmbeddingHash<TypeHashKey>::update_params() {
     // launch threads
     for (int id = 0; id < local_gpu_count; id++) {
       Base::device_resources_.results[id] = Base::device_resources_.train_thread_pool.push(
-          std::ref(update_params_per_thread_wrapper_hash<TypeHashKey>), this);
+          std::ref(update_params_per_thread_wrapper_hash<TypeHashKey>), this);//SSY push the thread for each GPU, also call the same update_params_per_thread
     }
 
     // wait for threads completion

@@ -111,7 +111,7 @@ class DataCollector {
    */
   ~DataCollector() { stat_ = STOP; }
 };
-
+//SSY the only constructor
 template <typename TypeKey>
 DataCollector<TypeKey>::DataCollector(std::vector<GeneralBuffer<float>*>& label_buffers,
                                       std::vector<GeneralBuffer<TypeKey>*>& csr_buffers,
@@ -140,7 +140,8 @@ DataCollector<TypeKey>::DataCollector(std::vector<GeneralBuffer<float>*>& label_
       label_buffers_internal_.push_back(
           new GeneralBuffer<float>(lb->get_num_elements(), lb->get_device_id()));
     }
-    for (auto cb : csr_buffers_) {
+    for (auto cb : csr_buffers_) {// SSY list of GeneralBuffer for each GPU
+	// create each buffer for internal use
       csr_buffers_internal_.push_back(
           new GeneralBuffer<TypeKey>(cb->get_num_elements(), cb->get_device_id()));
     }
@@ -180,7 +181,8 @@ void DataCollector<TypeKey>::collect() {
     std::vector<MPI_Request> req;
     req.reserve(2 * total_device_count);  // to prevent the reallocation
 #endif
-    csr_heap_->data_chunk_checkout(&chunk_tmp, &key);
+    csr_heap_->data_chunk_checkout(&chunk_tmp, &key); //SSY copy to chunk_tmp
+	// extract from chunk_tmp to csr_cpu_buffers and label_buffers
     const std::vector<CSR<TypeKey>*>& csr_cpu_buffers = chunk_tmp->get_csr_buffers();
     const std::vector<float*>& label_buffers = chunk_tmp->get_label_buffers();
     assert(csr_cpu_buffers.size() == total_device_count);
@@ -195,6 +197,7 @@ void DataCollector<TypeKey>::collect() {
         int o_device = -1;
         int local_id = device_resources_.get_local_id(i);
         CK_CUDA_THROW_(get_set_device(device_resources_.get_local_device_id(i), &o_device));
+	// SSY copy from csr_cpu_buffers to csr_buffers_internal_
         CK_CUDA_THROW_(cudaMemcpyAsync(csr_buffers_internal_[local_id]->get_ptr_with_offset(0),
                                        csr_cpu_buffers[i]->get_buffer(),
                                        csr_copy_num * sizeof(TypeKey), cudaMemcpyHostToDevice,
@@ -278,13 +281,14 @@ void DataCollector<TypeKey>::read_a_batch_to_device() {
       return;
     }
   }
+	// SSY iterating though all gpu
   for (unsigned int i = 0; i < device_resources_.size(); i++) {
     int o_device = -1;
 		//SSY stupid, just get current device and then set new device
     CK_CUDA_THROW_(get_set_device(device_resources_[i]->get_device_id(), &o_device));
 		//SSY input data buffer
-		// dst
-		// src
+		// dst to emb
+		// src csr_buffers_internal_
 		// size
 		// device to device
 		// stream

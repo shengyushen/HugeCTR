@@ -101,7 +101,7 @@ class GPUResourceGroup {
   std::vector<GPUResource*> gpu_resources_; /**< GPU resource vector */
  public:
   ctpl::thread_pool train_thread_pool; /**< cpu thread pool for training */
-  std::vector<std::future<void>> results;
+  std::vector<std::future<void>> results; // list of future object returned by train_thread_pool.push, and used to query the status of train_thread_pool
 
   GPUResourceGroup(const DeviceMap& device_map)
       : comms_(nullptr),

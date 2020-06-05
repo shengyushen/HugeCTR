@@ -53,13 +53,13 @@ class FileList {
       }
 
       std::string buff;
-      std::getline(read_stream, buff);
+      std::getline(read_stream, buff);// SSY the file_list_name have the number of file in the first line
       num_of_files_ = std::stoi(buff);
       assert(file_vector_.empty());
       if (num_of_files_ > 0) {
         for (int i = 0; i < num_of_files_; i++) {
           std::getline(read_stream, buff);
-          file_vector_.push_back(buff);
+          file_vector_.push_back(buff);// SSY get all file name
         }
         read_stream.close();
       } else {
@@ -76,7 +76,7 @@ class FileList {
    * @return the file name.
    */
   std::string get_a_file() {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard<std::mutex> lock(mtx_);// SSY here is the exclusion
     std::string file_name = file_vector_[current_file_idx_];
     current_file_idx_++;
     if (current_file_idx_ == num_of_files_) {

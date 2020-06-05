@@ -445,6 +445,7 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
       max_feature_num_per_sample = get_value_from_json<int>(j, "max_feature_num_per_sample");
       auto label_dim = get_value_from_json<int>(j, "label_dim");
       auto slot_num = get_value_from_json<int>(j, "slot_num");
+	// SSY read data from source_data
       data_reader[0] = new DataReader<TypeKey>(source_data, batch_size, label_dim, slot_num,
                                                max_feature_num_per_sample, gpu_resource_group);
       data_reader[1] = nullptr;
@@ -495,6 +496,7 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
           //SSY where SparseEmbeddingHash is created
           //SSY HugeCTR/src/embedding_creator.cu
           *embedding = EmbeddingCreator::create_sparse_embedding_hash(
+		// defined in HugeCTR/include/data_reader.hpp
               (*data_reader)->get_row_offsets_tensors(), (*data_reader)->get_value_tensors(),
               embedding_params, gpu_resource_group);
           break;
@@ -503,6 +505,7 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
       }
     }
     /* Create Network */
+	//SSY creating the MLP layers
     {
       if (!network->empty()) {
         CK_THROW_(Error_t::WrongInput, "vector network is not empty");
@@ -521,6 +524,7 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
       }
       std::vector<int> device_list = gpu_resource_group.get_device_list();
       for (auto device_id : device_list) {
+	//SSY network is just the list of network for each gpu
         network->push_back(create_network(j_layers_array, j_optimizer, *(embedding_tensors[i]),
                                           *(label_tensors[i]), batch_size / total_gpu_count,
                                           device_id, gpu_resource_group[i]));
@@ -536,6 +540,7 @@ static void create_pipeline_internal(DataReader<TypeKey>** data_reader,
 
 void Parser::create_pipeline(DataReader<TYPE_1>** data_reader, Embedding<TYPE_1>** embedding,
                              std::vector<Network*>* network, GPUResourceGroup& gpu_resource_group) {
+	//SSY HugeCTR/src/parser.cpp
   create_pipeline_internal<TYPE_1>(data_reader, embedding, network, gpu_resource_group, config_,
                                    batch_size_);
 }

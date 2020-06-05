@@ -161,7 +161,7 @@ Embedding<TypeKey>::Embedding(const std::vector<Tensor<TypeKey>*>& row_offsets_t
       const int batchsize_per_device = batchsize / device_resources_.get_total_gpu_count();
       std::vector<int> output_dims = {batchsize_per_device, slot_num, embedding_vec_size};
       Tensor<float>* output_tensor = new Tensor<float>(output_dims, *buff, TensorFormat_t::HSW);
-      buff->init(device_list[i]);
+      buff->init(device_list[i]); // allocate the space for output tensor's GeneralBuffer
       output_tensors_.push_back(output_tensor);
       output_buffers_.push_back(buff);
     }

@@ -23,6 +23,8 @@ Embedding<EmbeddingCreator::TYPE_1>* EmbeddingCreator::create_sparse_embedding_h
     const std::vector<Tensor<TYPE_1>*>& row_offsets_tensors,
     const std::vector<Tensor<TYPE_1>*>& value_tensors, SparseEmbeddingHashParams embedding_params,
     GPUResourceGroup& gpu_resource_group) {
+	//SSY HugeCTR/include/embeddings/sparse_embedding_hash.hpp
+	// I may find hash here
   Embedding<TYPE_1>* sparse_embedding = new SparseEmbeddingHash<TYPE_1>(
       row_offsets_tensors, value_tensors, embedding_params, gpu_resource_group);
   return sparse_embedding;

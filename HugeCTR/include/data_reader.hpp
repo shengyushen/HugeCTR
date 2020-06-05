@@ -46,7 +46,7 @@ static void data_reader_thread_func_(DataReaderMultiThreads<TypeKey>* data_reade
                                      int* p_loop_flag) {
   try {
     while (*p_loop_flag) {
-      data_reader->read_a_batch();
+      data_reader->read_a_batch();// SSY read from files to 
     }
   } catch (const std::runtime_error& rt_err) {
     std::cerr << rt_err.what() << std::endl;
@@ -64,8 +64,8 @@ template <typename TypeKey>
 static void data_collector_thread_func_(DataCollector<TypeKey>* data_collector, int* p_loop_flag) {
   try {
     int count = 0;
-    while (*p_loop_flag) {
-      data_collector->collect();
+    while (*p_loop_flag) { // SSY this run forever not just in constructor
+      data_collector->collect();// copy from cpu to device
       count++;
     }
   } catch (const std::runtime_error& rt_err) {
@@ -196,16 +196,17 @@ DataReader<TypeKey>::DataReader(const std::string& file_list_name,
   }
   CSRChunk<TypeKey> tmp_chunk(total_gpu_count, batchsize_, label_dim_, slot_num_,
                               max_feature_num_per_sample_ * batchsize_);
-  csr_heap_ = new Heap<CSRChunk<TypeKey>>(NumChunks, tmp_chunk);
+	//SSY reading from file nito csr_heap_
+  csr_heap_ = new Heap<CSRChunk<TypeKey>>(NumChunks, tmp_chunk);// SSY shared heap, several thread writing will be exclusive
   assert(data_readers_.empty() && data_reader_threads_.empty());
   for (int i = 0; i < NumThreads; i++) {
-    DataReaderMultiThreads<TypeKey>* data_reader =
+    DataReaderMultiThreads<TypeKey>* data_reader = // SSY both csr_heap_ and file_list_ have built in exclusion, so using them in multiple thread is ok
         new DataReaderMultiThreads<TypeKey>(*csr_heap_, *file_list_, max_feature_num_per_sample_);
     data_readers_.push_back(data_reader);
     data_reader_threads_.push_back(
-        new std::thread(data_reader_thread_func_<TypeKey>, data_reader, &data_reader_loop_flag_));
+        new std::thread(data_reader_thread_func_<TypeKey>, data_reader, &data_reader_loop_flag_));//SSY read from file_list_ to csr_heap_
   }
-
+	//SSY copy from csr_buffers_ to csr_buffers_ and label_buffers_
   data_collector_ =
       new DataCollector<TypeKey>(label_buffers_, csr_buffers_, device_resources_, csr_heap_);
 
@@ -240,7 +241,7 @@ DataReader<TypeKey>::DataReader(const DataReader<TypeKey>& prototype)
   data_collector_thread_ = new std::thread(data_collector_thread_func_<TypeKey>, data_collector_,
                                            &data_reader_loop_flag_);
 }
-
+//SSY this is real creator used
 template <typename TypeKey>
 DataReader<TypeKey>::DataReader(const std::string& file_list_name, int batchsize, int label_dim,
                                 int slot_num, int max_feature_num_per_sample,
@@ -266,7 +267,7 @@ DataReader<TypeKey>::DataReader(const std::string& file_list_name, int batchsize
                               max_feature_num_per_sample_ * batchsize_);
   csr_heap_ = new Heap<CSRChunk<TypeKey>>(NumChunks, tmp_chunk);
   assert(data_readers_.empty() && data_reader_threads_.empty());
-  for (int i = 0; i < NumThreads; i++) {
+  for (int i = 0; i < NumThreads; i++) { // SSY all these data_reader read the same files
     DataReaderMultiThreads<TypeKey>* data_reader =
         new DataReaderMultiThreads<TypeKey>(*csr_heap_, *file_list_, max_feature_num_per_sample_);
     data_readers_.push_back(data_reader);
@@ -277,6 +278,7 @@ DataReader<TypeKey>::DataReader(const std::string& file_list_name, int batchsize
   auto& device_list = device_resources_.get_device_list();
 
   // create label tensor
+	//SSY input to mlp
   int batch_size_per_device = batchsize_ / total_gpu_count;
   std::vector<int> tmp_dim = {batch_size_per_device, label_dim_};
   assert(label_tensors_.empty() && label_buffers_.empty());
@@ -287,6 +289,8 @@ DataReader<TypeKey>::DataReader(const std::string& file_list_name, int batchsize
     label_buffers_.push_back(tmp_label_buff);
   }
   // create value and row offset tensor
+	// only for reading new data
+	// SSY input to emb
   std::vector<int> num_rows_dim = {1, batchsize_ * slot_num_ + 1};
   std::vector<int> num_max_value_dim = {1, max_feature_num_per_sample_ * batchsize_};
   for (auto device_id : device_list) {
@@ -299,11 +303,12 @@ DataReader<TypeKey>::DataReader(const std::string& file_list_name, int batchsize
     value_tensors_.push_back(tmp_value);
     tmp_buffer->init(device_id);
     csr_buffers_.push_back(tmp_buffer);
+	//SSY csr_buffers_ is the buffer to hold row_offsets_tensor_ and value_tensor_
   }
 
   data_collector_ =
       new DataCollector<TypeKey>(label_buffers_, csr_buffers_, device_resources_, csr_heap_, false);
-
+	//SSY this thread run forever, and call data_collector_thread_func_ only when data_reader_loop_flag_ is 1
   data_collector_thread_ = new std::thread(data_collector_thread_func_<TypeKey>, data_collector_,
                                            &data_reader_loop_flag_);
   return;

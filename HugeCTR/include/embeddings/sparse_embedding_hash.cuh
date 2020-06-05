@@ -40,7 +40,7 @@ __global__ void forward_sum_kernel(const int batch_size, const int slot_num,
   int tid = threadIdx.x;  // each thread corresponding to one element in the embedding vector
 
   if (bid < batch_size && tid < embedding_vec_size) {
-    for (int i = 0; i < slot_num; i++) {
+    for (int i = 0; i < slot_num; i++) { // SSY in each slot
       int feature_row_index = bid * slot_num + i;
       TypeHashKey value_offset = row_offset[feature_row_index];
       TypeHashKey feature_num =
@@ -51,7 +51,7 @@ __global__ void forward_sum_kernel(const int batch_size, const int slot_num,
       // reduce in a slot
       for (int j = 0; j < feature_num; j++) {
         TypeHashValueIndex value_index = hash_value_index[value_offset + j];
-        sum += hash_table_value[value_index * embedding_vec_size + tid];
+        sum += hash_table_value[value_index * embedding_vec_size + tid]; //SSY this is exactly the place to access the second value table mapping value index to value
 
         // just for debug
         // printf("bid=%d, slot=%d, tid=%d, j=%d, value_index=%d, value=%f\n", bid, i, tid, j,
@@ -99,7 +99,7 @@ __global__ void backward_sum_kernel(const int batch_size, const int slot_num,
   if (bid < batch_size && tid < embedding_vec_size) {
     for (int i = 0; i < slot_num; i++) {
       int feature_index = (bid * slot_num + i) * embedding_vec_size + tid;
-      wgrad[feature_index] = top_grad[feature_index];
+      wgrad[feature_index] = top_grad[feature_index];//SSY simply push back the grad
     }
   }
 }
@@ -176,7 +176,7 @@ __global__ void value_count_kernel(const int nnz, const TypeHashValueIndex *hash
 
     // if sample_num > 0, continue to compare the current hash_value_index_sort with latter values,
     // cal how many elements in this group
-    if (sample_num) {
+    if (sample_num) {// SSY only the border between two different sample id need to continue, other thread stay idle
       //SSY exp 2 forward search
       auto sample_num_old = sample_num;
       while (gid + sample_num < nnz) {
@@ -221,8 +221,9 @@ __global__ void value_count_kernel(const int nnz, const TypeHashValueIndex *hash
       // so atomic is not the bottleneck
       //uint32_t counter = (*hash_value_index_count_counter) + 1;
       //(*hash_value_index_count_counter)=(*hash_value_index_count_counter)+1;
-      hash_value_index_count[counter] = sample_num;
-      hash_value_index_count_offset[counter] = gid;
+      hash_value_index_count[counter] = sample_num;//SSY the number of sample id
+      hash_value_index_count_offset[counter] = gid;// SSY record the base of current sample id
+	//SSY they are compacted with atomicAdd
     }
   }
 }
@@ -239,7 +240,7 @@ __global__ void opt_adam_kernel(const uint32_t hash_value_index_count_num,
   int tid = threadIdx.x;
 
   if (tid < embedding_vec_size && bid < hash_value_index_count_num) {
-    uint32_t sample_num = hash_value_index_count[bid];
+    uint32_t sample_num = hash_value_index_count[bid];//for small table this can only use a handful of thread
 
     // accumulate the wgrads for the corresponding embedding vector
     float gi = 0.0f;
@@ -397,8 +398,9 @@ void do_forward(const cudaStream_t stream, const int batch_size, const int slot_
     // get hash_value_index from hash_table by hash_key
     size_t num;
     CK_CUDA_THROW_(cudaMemcpyAsync(&num, &row_offset[batch_size * slot_num], sizeof(TypeHashKey),
-                                   cudaMemcpyDeviceToHost, stream));
-    hash_table->get_insert(hash_key, hash_value_index, num, stream);
+                                   cudaMemcpyDeviceToHost, stream)); // SSY only copy the length 
+	//SSY HugeCTR/include/hashtable/nv_hashtable.cuh
+    hash_table->get_insert(hash_key, hash_value_index, num, stream); // SSY crate a new one
     // hash_table->get(hash_key, hash_value_index, num, stream);
 
     // do sum reduction
@@ -407,7 +409,7 @@ void do_forward(const cudaStream_t stream, const int batch_size, const int slot_
     dim3 gridSize(batch_size, 1, 1);  // each block corresponds to a sample
     forward_sum_kernel<TypeHashKey, TypeHashValueIndex>
         <<<gridSize, blockSize, 0, stream>>>(batch_size, slot_num, embedding_vec_size, row_offset,
-                                             hash_value_index, hash_table_value, embedding_feature);
+                                             hash_value_index, hash_table_value, embedding_feature);//SSY using hash_value_index to access hash_table_value
     // for combiner=mean, call do_forward_scale() after this do_forward() and NCCL all-reduce
     // operation
   } catch (const std::runtime_error &rt_err) {
@@ -475,7 +477,7 @@ void do_update_params(
         *hash_table,
     TypeHashValueIndex *hash_value_index, TypeHashKey *sample_id, TypeHashKey *sample_id_sort,
     TypeHashValueIndex *hash_value_index_sort, uint32_t *hash_value_index_count,
-    uint32_t *hash_value_index_count_offset, uint32_t *hash_value_index_count_counter,
+    uint32_t *hash_value_index_count_offset, uint32_t *hash_value_index_count_counter,// curent GPU only have one such counter
     void *temp_storage_sort, size_t temp_storage_sort_bytes, const float *wgrad,
     TypeHashValueIndex *deltaw_hash_value_index, float *deltaw, float *hash_table_value) {
   try {
@@ -497,11 +499,11 @@ void do_update_params(
     // step3: sort by hash_value_index
     int end_bit = (int)log2((float)max_vocabulary_size_per_gpu) + 1;
     CK_CUDA_THROW_(cub::DeviceRadixSort::SortPairs(
-        (void *)temp_storage_sort, temp_storage_sort_bytes, hash_value_index, hash_value_index_sort,
-        sample_id, sample_id_sort, nnz, 0, end_bit, stream, false));
+        (void *)temp_storage_sort, temp_storage_sort_bytes, hash_value_index, hash_value_index_sort,//SSY value index in and out
+        sample_id, sample_id_sort, nnz, 0, end_bit, stream, false));//SSY sample_id in and out sorted
 
     // step4: count the number for each unduplicated hash_value_index
-    CK_CUDA_THROW_(cudaMemsetAsync(hash_value_index_count_counter, 0, sizeof(uint32_t), stream));
+    CK_CUDA_THROW_(cudaMemsetAsync(hash_value_index_count_counter, 0, sizeof(uint32_t), stream));// SSY this counte ris initialized to zero
     gridSize.x = (nnz + (blockSize.x - 1)) / blockSize.x;
     // SSY 24% run time
     value_count_kernel<<<gridSize, blockSize, 0, stream>>>(
@@ -511,6 +513,7 @@ void do_update_params(
     uint32_t hash_hash_value_index_count_num = 0;
     // this async memcpy will not perform as a async operation because the host memory is not a
     // pinned memroy
+	// SSY get the counter to host
     CK_CUDA_THROW_(cudaMemcpyAsync(&hash_hash_value_index_count_num, hash_value_index_count_counter,
                                    sizeof(uint32_t), cudaMemcpyDeviceToHost, stream));
 

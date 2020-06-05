@@ -55,17 +55,22 @@ static void check_device(int device_id, int min_major, int min_minor) {
 }
 
 Session::Session(int batch_size, const std::string& json_name, const DeviceMap& device_map)
-    : gpu_resource_group_(device_map) {
+    : gpu_resource_group_(device_map) { // SSY they are not the same type, device_map is used as input to gpu_resource_group_ constructor
   try {
     for (auto dev : gpu_resource_group_.get_device_list()) {
       check_device(dev, 6, 0);  // lowest supported device is CC=60
     }
     parser_ = new Parser(json_name, batch_size);
-    DataReader<TypeKey>* data_reader_array[2];
+	//SSY TypeKey is defined in HugeCTR/include/session.hpp as long long
+	// not ye initialized here, 
+	// need to be initialized in HugeCTR/src/parser.cpp create_pipeline_internal
+    DataReader<TypeKey>* data_reader_array[2];// SSY two data_reader for training and eval
     //SSY the reference of embedding_ is passed into pipeline creator to create SparseEmbeddingHash
+	// not only emb, but also the whole network in networks_
     // HugeCTR/src/parser.cpp
     // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
     // HugeCTR/include/embeddings/sparse_embedding_hash.hpp
+	// SSY this create_pipeline create the data_reader_array, embedding_ and the networks_
     parser_->create_pipeline(data_reader_array, &embedding_, &networks_, gpu_resource_group_);
 		// SSY the two data_reader_array are used as 
     data_reader_ = data_reader_array[0];
@@ -148,8 +153,9 @@ void network_train_helper(int id, Network* n) {
 Error_t Session::train() {
     //std::cout << "Session::train"<<std::endl;
   try {
-		//SSY HugeCTR/include/data_collector.hpp
-		// see above in constructor Session
+	//SSY HugeCTR/include/data_reader.hpp call HugeCTR/include/data_collector.hpp
+	// before this read_a_batch_to_device, there are still data_reader_ and data_collector to read data from file and distribute to GPU
+	// see above in constructor Session
     data_reader_->read_a_batch_to_device();
     // SSY where lookup embedding_ happen
     // SSY HugeCTR/include/embeddings/sparse_embedding_hash.cuh
@@ -157,33 +163,34 @@ Error_t Session::train() {
     embedding_->forward();
     
 
-    if (networks_.size() > 1) {
+    if (networks_.size() > 1) { // SSY mean multiple GPU
       // execute dense forward and backward with multi-cpu threads
       for (unsigned int i = 0; i < networks_.size(); i++) {
         gpu_resource_group_.results[i] = gpu_resource_group_.train_thread_pool.push(
-            std::ref(network_train_helper), networks_[i]);
+            std::ref(network_train_helper), networks_[i]);// SSY this thread will call networks_[i].train
       }
       for (unsigned int i = 0; i < networks_.size(); i++) {
-        gpu_resource_group_.results[i].get();
+        gpu_resource_group_.results[i].get(); //SSY wait for the result
       }
     } else if (networks_.size() == 1) {
-      networks_[0]->train();
+      networks_[0]->train();//SSY only one GPU and thread, so no need to run ctpl
     } else {
       assert(!"networks_.size() should not less than 1.");
     }
+	// SSY notice that, at this point, the train on mlp have reach an end, we should now exchange parameter
     // wgrad exchange
     if (gpu_resource_group_.get_total_gpu_count() > 1) {
       CK_NCCL_THROW_(ncclGroupStart());
       for (auto network : networks_) {
-        network->exchange_wgrad();
+        network->exchange_wgrad(); // simple all reduce
       }
       CK_NCCL_THROW_(ncclGroupEnd());
     }
     for (auto network : networks_) {
-      network->update_params();
+      network->update_params();// merging parameter on mlp
     }
 
-    embedding_->backward();
+    embedding_->backward();//SSY HugeCTR/include/embeddings/sparse_embedding_hash.hpp
     //SSY above backward is used to compute gradient
     //SSY following is used to scatter gradient back to emb table
     //SSY HugeCTR/include/embeddings/sparse_embedding_hash.hpp
